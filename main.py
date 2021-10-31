@@ -14,6 +14,8 @@ current_player = "White"
 checker = [(-1, -1)]
 kings = {"White": ["K", "", "'", 1],
          "Black": ["K'", "'", "", -1]}
+has_moved = {(0, 0): False, (0, 4): False, (0, 7): False,
+             (7, 0): False, (7, 4): False, (7, 7): False}
 
 
 def convert_to_index(move):
@@ -142,13 +144,40 @@ def check_queen(start_pos, end_pos):
     return False
 
 
-def check_king(y, x, end_pos):
+def castling(start_y, start_x, end_y, end_x, turn, is_test):
+    side = None
+    if end_x < start_x:
+        side = 1
+    elif end_x > start_x:
+        side = -1
+    pieces_between = ["" for i in range(end_x+side, start_x, side) if board[start_y][i] != "-"]
+    if len(pieces_between) > 0:
+        return False
+    start_pos = (start_y, start_x)
+    end_pos = (end_y, end_x)
+    king_piece = board[start_y][start_x]
+    rook_piece = board[end_y][end_x]
+    if not has_moved[start_pos] and not has_moved[end_pos] and not check_if_check(turn, (end_y, end_x+side)):
+        if is_test:  # If it is just a check then we will return True right away because it would be more messy if we have to change it back
+            return True
+        board[start_y][start_x] = "-"
+        board[end_y][end_x] = "-"
+        board[end_y][end_x+side] = king_piece
+        board[start_y][start_x+side*-1] = rook_piece
+        return True
+    return False
+
+
+def check_king(y, x, end_y, end_x, turn, is_test):
     possible_moves = [(y, x+1), (y, x-1),
                       (y+1, x), (y-1, x),
                       (y+1, x+1), (y-1, x-1),
                       (y+1, x-1), (y-1, x+1)]
+    end_pos = (end_y, end_x)
     if end_pos in possible_moves:
         return True
+    if board[y][x][0] == "K" and board[end_y][end_x][0] == "R" and not check_if_check(turn):
+        return castling(y, x, end_y, end_x, turn, is_test)
     return False
 
 
@@ -161,20 +190,20 @@ def check_move(start_pos, end_pos, turn, is_test=False):
         return False
     elif start_pos == end_pos:  # You can't move to the same position
         return False
-    elif end_piece in ["K", "K'"]:
+    elif end_piece[0] == "K":
         return False
     elif start_piece == "-":
         return False
     elif (turn == "White" and len(start_piece) == 2) or (turn == "Black" and len(start_piece) == 1):
         return False
-    elif on_same_side(start_piece, end_piece):  # Trying to eat ally piece
+    elif on_same_side(start_piece, end_piece) and start_piece[0] != "K" and end_piece[0] != "R":  # Trying to eat ally piece. King and Rook are an exception because we can use them for castling.
         return False
     moves_checker = {"P": check_pawn(start_y, start_x, end_y, end_x, is_test),
                      "R": check_rook(start_y, start_x, end_y, end_x),
                      "N": check_knight(start_y, start_x, end_pos),
                      "B": check_bishop(start_pos, end_pos),
                      "Q": check_queen(start_pos, end_pos),
-                     "K": check_king(start_y, start_x, end_pos),
+                     "K": check_king(start_y, start_x, end_y, end_x, turn, is_test),
                      }
     return moves_checker[start_piece[0]]
 
@@ -198,6 +227,10 @@ def make_move(move, turn):
             redo_move(start_pos, end_pos, st_piece, ed_piece)
             print("You can't put your king in danger!")
             return False
+        if start_pos in has_moved:
+            has_moved[start_pos] = True
+        if end_pos in has_moved:
+            has_moved[end_pos] = True
         return True
     else:
         print("Invalid move!")
