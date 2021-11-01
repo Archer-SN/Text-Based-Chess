@@ -14,6 +14,7 @@ current_player = "White"
 checker = [(-1, -1)]
 kings = {"White": ["K", "", "'", 1],
          "Black": ["K'", "'", "", -1]}
+can_en_passant = {}
 has_moved = {(0, 0): False, (0, 4): False, (0, 7): False,
              (7, 0): False, (7, 4): False, (7, 7): False}
 
@@ -63,7 +64,34 @@ def promote_pawn(pawn_y, pawn_x, end_y, ally):
     board[pawn_y][pawn_x] = promoted_piece + ally
 
 
-def check_pawn(start_y, start_x, end_y, end_x, is_test):
+def en_passant(start_y, start_x, end_y, end_x, turn, is_test):
+    if len(board[start_y][start_x]) == 1:
+        behind = -1
+    else:
+        behind = 1
+    if (end_y+behind, end_x) in can_en_passant and can_en_passant[end_y+behind, end_x] == 1:
+        if is_test:
+            return True
+        behind_piece = board[end_y+behind][end_x]
+        start_piece = board[start_y][start_x]
+        # Replacing pieces just to check if check
+        board[end_y+behind][end_x] = "-"
+        board[end_y][end_x] = start_piece
+        board[start_y][start_x] = "-"
+        if check_if_check(turn):
+            board[end_y + behind][end_x] = behind_piece
+            board[end_y][end_x] = "-"
+            board[start_y][start_x] = start_piece
+            return False
+        # The end position will end up being "-" instead of "P" if we don't do this.
+        board[end_y + behind][end_x] = "-"
+        board[end_y][end_x] = "-"
+        board[start_y][start_x] = start_piece
+        return True
+    return False
+
+
+def check_pawn(start_y, start_x, end_y, end_x, turn, is_test):
     if len(board[start_y][start_x]) == 1:
         side = 1
         default_pos = 1  # The position that the pawn must be in if it wants to move by 2 blocks.
@@ -76,10 +104,14 @@ def check_pawn(start_y, start_x, end_y, end_x, is_test):
     if start_y + side == end_y:
         if ((start_x - 1 == end_x or start_x + 1 == end_x) and board[end_y][end_x] != "-") or (start_x == end_x and board[end_y][end_x] == "-"):
             return True
+        elif (start_x - 1 == end_x or start_x + 1 == end_x) and board[end_y][end_x] == "-":
+            return en_passant(start_y, start_x, end_y, end_x, turn, is_test)
         if not is_test:
             promote_pawn(start_y, start_x, end_y, ally)
         return True
     elif start_y + side*2 == end_y and start_y == default_pos and end_x == start_x and board[end_y][end_x] == "-" and board[start_y+side][start_x] == "-":
+        if not is_test:
+            can_en_passant[(end_y, end_x)] = 2
         return True
     return False
 
@@ -158,7 +190,7 @@ def castling(start_y, start_x, end_y, end_x, turn, is_test):
     king_piece = board[start_y][start_x]
     rook_piece = board[end_y][end_x]
     if not has_moved[start_pos] and not has_moved[end_pos] and not check_if_check(turn, (end_y, end_x+side)):
-        if is_test:  # If it is just a check then we will return True right away because it would be more messy if we have to change it back
+        if is_test:  # If it is just a check then we will return True right away otherwise the code will be messy because we have to change it back.
             return True
         board[start_y][start_x] = "-"
         board[end_y][end_x] = "-"
@@ -198,7 +230,7 @@ def check_move(start_pos, end_pos, turn, is_test=False):
         return False
     elif on_same_side(start_piece, end_piece) and start_piece[0] != "K" and end_piece[0] != "R":  # Trying to eat ally piece. King and Rook are an exception because we can use them for castling.
         return False
-    moves_checker = {"P": check_pawn(start_y, start_x, end_y, end_x, is_test),
+    moves_checker = {"P": check_pawn(start_y, start_x, end_y, end_x, turn, is_test),
                      "R": check_rook(start_y, start_x, end_y, end_x),
                      "N": check_knight(start_y, start_x, end_pos),
                      "B": check_bishop(start_pos, end_pos),
@@ -379,7 +411,7 @@ def render():
     row_number = 1
     print()
     print("   " + "  ".join(COL))
-    print("   " + "-" * 15)
+    print("   " + "-" * 22)
     for row in board:
         formatted_row = [" " + row[i] if i > 0 and (len(row[i]) == 1 or len(row[i]) == 2) and len(row[i-1]) == 1 else row[i] for i in range(len(row))]
         print(str(row_number) + "  " + " ".join(formatted_row))
@@ -397,13 +429,13 @@ while True:
         print("Stalemate!")
         break
     print(current_player + " Turn!")
-
     while True:
         input_move = str(input("Input a move: "))
         if not convert_to_index(input_move):
             continue
         start_move, end_move = convert_to_index(input_move)
-
         if make_move(input_move, current_player):
             break
+    for i in can_en_passant:
+        can_en_passant[i] -= 1
     current_player = next_turn(current_player)
